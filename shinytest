@@ -1,0 +1,88 @@
+options(googleAuthR.webapp.client_id = "39354250887-qrk2hb0gnajvkjpg7eou5jluf51vvac7.apps.googleusercontent.com")
+options(googleAuthR.webapp.client_secret = "zpIxwVoB4slyZ6URQBlGfPI7")
+
+options(googleAuthR.redirect = "https://thinkuser.shinyapps.io")
+library(shiny)
+gar_set_client(scopes = c("https://www.googleapis.com/auth/analytics.readonly"))
+
+library(googleAuthR)
+library(googleAnalyticsR)
+
+
+#gar_set_client(web_json = "shiny_auth_web_client.json",
+#               scopes="https://www.googleapis.com/auth/analytics.readonly"
+#               )
+
+
+#gar_auth_service("R and Google Analytics-b825943ded3a.json")
+# GAR_WEB_CLIENTID="39354250887-qrk2hb0gnajvkjpg7eou5jluf51vvac7.apps.googleusercontent.com"
+# GAR_WEB_CLIENT_SECRET="zpIxwVoB4slyZ6URQBlGfPI7"
+# GAR_SCOPES="https://www.googleapis.com/auth/analytics.readonly"
+
+
+#-- we enabled local host port 1221 on google console here
+#--https://console.cloud.google.com/apis/credentials/oauthclient/39354250887-qrk2hb0gnajvkjpg7eou5jluf51vvac7.apps.googleusercontent.com?project=stellar-vista-149518
+#options(shiny.port=1221)
+# Define UI for application that draws a histogram
+ui <- fluidPage(
+    
+    #-- set the button without functionality just UI
+    googleAuth_jsUI("auth"),
+    
+    #interface
+    column(width=12, authDropdownUI("auth_dropdown",
+                                    inColumns = TRUE)),
+    dateRangeInput("datepicker", NULL, start = Sys.Date() - 300),
+    plotOutput("trend_plot")
+    
+)
+
+# Define server logic required to draw a histogram
+server <- function(input, output, session) {
+    
+    #-- Get the auth token
+    auth <- callModule(googleAuth_js, "auth")
+    
+    #-- Get GA account lists
+    ga_accounts <- reactive({
+        req(auth())
+        
+        with_shiny(
+            ga_account_list,
+            shiny_access_token = auth()
+        )
+    })
+    
+    view_id <- callModule(authDropdown, "auth_dropdown",
+                          ga.table = ga_accounts)
+    
+    
+    ga_data <- reactive({
+        #require viewid and date to be present
+        req(view_id())
+        req(input$datepicker)
+        
+        with_shiny(
+            google_analytics,
+            view_id(),
+            date_range=input$datepicker,
+            dimensions="date",
+            metrics="sessions",
+            max=-1,
+            shiny_access_token = auth() ##every with shiny function need this shiny access token as well
+        )
+        
+    })
+    
+    output$trend_plot <- renderPlot({
+        req(ga_data())
+        ga_data <- ga_data()
+        
+        plot(ga_data$sessions, type="l")
+        
+    })
+    
+}
+
+# Run the application 
+shinyApp(ui = ui, server = server)
